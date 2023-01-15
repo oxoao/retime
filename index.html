@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Retime</title>
+<style>
+    body {
+        font-family: sans-serif;
+        background: rgb(24, 24, 24);
+    }
+    table {
+        border-collapse: collapse;
+    }
+    th {
+        color: white;
+        padding: 5px;
+        border-bottom: solid 1px #282828;
+        border-top: 0;
+    }
+    td {
+        color: rgb(170, 170, 170);
+        white-space: nowrap;
+        border-bottom: 0;
+        border-top: 0;
+    }
+    td + td {
+        border-left: 1px solid #282828;
+    }
+    th + th {
+        border-left: 1px solid #282828;
+    }
+    .segment-row {
+        background: background: rgb(24, 24, 24);
+    }
+    .segment-row:hover {
+        background: #222;
+    }
+    .segment-row:hover .time-input {
+        background: #222;
+    }
+    .time-input {
+        color: white;
+        font-size: 16px;
+        background: rgb(24, 24, 24);
+        border: 0;
+        padding: 4px 20px 4px 20px;
+    }
+    .time-input:disabled {
+        color: rgb(170, 170, 170);
+    }
+    .formatted-time-input {
+        width: 130px;
+    }
+    .frame-time-input {
+        width: 80px;
+        background: rgb(13, 13, 13);
+        border-radius: 2px;
+        border: 1px solid #303030;
+    }
+    .frame-time-input:disabled {
+        background: 0;
+        border: 0;
+    }
+    .control-btn {
+        cursor: pointer;
+        border-radius: 2px;
+        font-weight: bold;
+        padding: 5px 20px 5px 20px;
+        border: 1px solid #464646;
+        color: white;
+        background: 0;
+    }
+    .control-btn:hover {
+        background: #464646;
+    }
+    .seg-control-btn {
+        background: 0;
+        color: white;
+        border: 1px solid grey;
+        cursor: pointer;
+    }
+    .seg-control-btn:hover {
+        background: #464646;
+    }
+    .segment-btn {
+        cursor: pointer;
+        border-radius: 2px;
+        font-weight: bold;
+        padding: 5px;
+        border: 1px solid #464646;
+        color: white;
+        background: 0;
+    }
+    .segment-btn:hover{
+        background: #464646;
+    }
+    #video-url {
+        color: white;
+        font-size: 16px;
+        width: 720px;
+        border: 1px solid #303030;
+        border-right: 0;
+        background: rgb(13, 13, 13);
+        padding: 4px 20px 4px 20px;
+        border-radius: 2px 0 0 2px;
+        box-sizing: border-box;
+        outline: 0;
+        margin-bottom: 8px;
+    }
+    #video-url:focus {
+        border: solid 1px #1c62b9;
+    }
+    #video-fps {
+        color: white;
+        font-size: 16px;
+        width: 80px;
+        border: 1px solid #303030;
+        background: rgb(13, 13, 13);
+        padding: 4px 20px 4px 20px;
+        border-radius: 0 2px 2px 0;
+        box-sizing: border-box;
+        outline: 0;
+    }
+</style>
+<script>
+    "use strict";
+    var vidId = "";
+    var vidFps = 0;
+    var firstLoad = true;
+    var tag = document.createElement("script");
+    tag.src = "https://www.youtube.com/iframe_api";
+    var firstScriptTag = document.getElementsByTagName("script")[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    var player;
+
+    function loadVideo() {
+        vidId = parseVideoURL(document.getElementById("video-url").value);
+        if (vidId == null)
+            return;
+        if (firstLoad == true) {
+            player = new YT.Player("player", {
+                height: "450",
+                width: "800",
+                videoId: vidId
+            });
+            firstLoad = false;
+        } else {
+            player.loadVideoById(vidId);
+        }
+        stateChange();
+    }
+
+    function parseVideoURL(url) {
+        if (url.length == 11) {
+            return url;
+        }
+        let regExp = /youtu\.?be.*(?:\/|v=)([\w-]{11})/;
+        let match = url.match(regExp);
+        return (match != null) ? match[1] : null;
+    }
+
+    function loadQueryString() {
+        let params = new URLSearchParams(window.location.search);
+        let v = "";
+        vidFps = 60;
+        document.getElementById("video-fps").value = vidFps;
+        if (params.has("v")) {
+            v = params.get("v");
+            document.getElementById("video-url").value = v;
+        }
+        if (params.has("f")) {
+            vidFps = params.get("f");
+            document.getElementById("video-fps").value = vidFps;
+        }
+        loadVideo();
+        if (!params.has("w")) {
+            addSegment(0, 0, 0);
+        } else {
+            const segments = params.get("w").split(".");
+            for (let i = 0; i < segments.length; i++) {
+                let endframes = segments[i].split("-");
+                let sub = 0;
+                if (endframes.length == 1) {
+                    sub = 1;
+                    endframes = segments[i].split("_");
+                }
+                addSegment(endframes[0], endframes[1], sub);
+            }
+        }
+    }
+
+    function attachFpsOninput() {
+        let f = document.getElementById("video-fps");
+        f.oninput = function() { validateNumberInput(f) };
+    }
+
+    window.addEventListener("load", function() {
+        attachFpsOninput();
+        loadQueryString();
+    });
+
+    function updateQueryString() {
+        let v = encodeURIComponent(vidId);
+        let q = "?v=" + v + "&f=" + vidFps + "&w=";
+        let w = "";
+
+        let t = document.getElementById("segment-table");
+        for (let i = 1, cell; cell = t.rows[i] ; i++) {
+            let start = cell.cells[1].getElementsByTagName("input")[1].value;
+            let end = cell.cells[2].getElementsByTagName("input")[1].value;
+            let sub = (cell.cells[5].getElementsByTagName("input")[0].checked);
+            w += ((w === "")?"":".") + start + (sub ? "_" : "-") + end;
+        }
+        q += w;
+        let u = window.location.href.split('?')[0] + q;
+        window.history.replaceState(null, '', u);
+    }
+
+    function getCurrentFrame() {
+        return Math.floor(player.getCurrentTime() * vidFps);
+    }
+
+    function seek(el) {
+        let s = el.parentElement.childNodes[1].value;
+        let f = parseInt(s, 10);
+        _seek(f);
+    }
+
+    function _seek(frame) {
+        let c = 0.5;
+        let t = (frame + c) / vidFps;
+        player.seekTo(t, true);
+    }
+
+    function formatTime(f) {
+        let t = f / vidFps;
+        let secs = Math.abs(t);
+        let mins = Math.floor(secs / 60);
+        let hrs = Math.floor(mins / 60);
+        secs = (secs % 60).toFixed(3);
+        mins = (mins % 60);
+        hrs = ("0" + hrs).slice(-2) + ":";
+        mins = ("0" + mins).slice(-2) + ":";
+        secs = ("0" + secs).slice(-6);
+        let time = hrs + mins + secs;
+        if (t < 0) time = "-" + time;
+        return time;
+    }
+
+    function updateSegments() {
+        let t = document.getElementById("segment-table");
+        for (let i = 1, row, sum = 0; row = t.rows[i]; i++) {
+            let a = parseInt(row.cells[1].getElementsByTagName("input")[1].value);
+            let b = parseInt(row.cells[2].getElementsByTagName("input")[1].value);
+            let sub = row.cells[5].getElementsByTagName("input")[0].checked;
+            let c = b - a;
+            if (sub) c *= -1;
+            sum += c;
+
+            row.cells[1].getElementsByTagName("input")[0].value = formatTime(a);
+            row.cells[2].getElementsByTagName("input")[0].value = formatTime(b);
+
+            row.cells[3].getElementsByTagName("input")[0].value = formatTime(c);
+            row.cells[3].getElementsByTagName("input")[1].value = c;
+
+            row.cells[4].getElementsByTagName("input")[0].value = formatTime(sum);
+            row.cells[4].getElementsByTagName("input")[1].value = sum;
+        }
+    }
+
+    function getTime() {
+        let f = getCurrentFrame();
+        let td = this.parentElement;
+        let y = td.childNodes;
+        y[1].value = f;
+        _seek(f);
+        stateChange();
+    }
+
+    function createTime(tableCell, frame) {
+        let timeInput = document.createElement("input");
+        timeInput.setAttribute("disabled", "");
+        timeInput.classList.add("time-input");
+        timeInput.classList.add("formatted-time-input");
+        tableCell.appendChild(timeInput);
+
+        let frameInput = document.createElement("input");
+        frameInput.classList.add("time-input");
+        frameInput.classList.add("frame-time-input");
+        if (frame == -1) {
+            frameInput.setAttribute("disabled", "");
+        } else {
+            frameInput.value = frame;
+            frameInput.oninput = function() { validateNumberInput(frameInput) };
+        }
+        tableCell.appendChild(frameInput);
+    }
+
+    function validateNumberInput(el) {
+        el.value = el.value.replace(/\D/g, "");
+        stateChange();
+    }
+
+    function updateFps() {
+        vidFps = document.getElementById("video-fps").value;
+    }
+
+    function stateChange() {
+        updateFps();
+        updateQueryString();
+        updateSegments();
+    }
+
+    function createTimeControls(tableCell, frame) {
+        createTime(tableCell, frame);
+
+        let getBtn = document.createElement("button");
+        getBtn.setAttribute("class", "segment-btn");
+        getBtn.innerHTML = "Get";
+        getBtn.onclick = getTime;
+        tableCell.appendChild(getBtn);
+
+        let seekBtn = document.createElement("button");
+        seekBtn.setAttribute("class", "segment-btn");
+        seekBtn.innerHTML = "Seek";
+        seekBtn.onclick = function() {seek(this)};
+        tableCell.appendChild(seekBtn);
+    }
+
+    function createControls(tableCell1, tableCell2, subtract) {
+        let sub = document.createElement("input");
+        sub.setAttribute("type", "checkbox");
+        sub.onchange = function(){ stateChange()};
+        sub.checked = (subtract != 0);
+        tableCell1.appendChild(sub);
+
+        let up = document.createElement("button");
+        up.innerHTML = "∧";
+        up.onclick = function(){ moveRowUp(this.parentNode.parentNode) };
+        up.classList.add('seg-control-btn');
+        tableCell2.appendChild(up);
+
+
+        let down = document.createElement("button");
+        down.innerHTML = "∨";
+        down.onclick = function(){ moveRowDown(this.parentNode.parentNode) };
+        down.classList.add('seg-control-btn');
+        tableCell2.appendChild(down);
+
+        let del = document.createElement("button");
+        del.innerHTML = "X";
+        del.onclick = delSegment;
+        del.classList.add('seg-control-btn');
+        tableCell2.appendChild(del);
+    }
+
+    function addSegment(start, end, subtract) {
+        let t = document.getElementById("segment-table");
+        let row = t.insertRow(-1);
+        row.setAttribute("class", "segment-row");
+
+        let cell = new Array(7);
+        for (let i = 0; i < 7; i++)
+            cell[i] = row.insertCell(i);
+
+        let segmentCount = t.rows.length - 1;
+        cell[0].innerHTML = segmentCount;
+
+        createTimeControls(cell[1], start);
+        createTimeControls(cell[2], end);
+        createTime(cell[3], -1);
+        createTime(cell[4], -1);
+        createControls(cell[5], cell[6], subtract);
+        stateChange();
+    }
+
+    function fixRowOrdinals() {
+        let t = document.getElementById("segment-table");
+        for (let i = 1, row; row = t.rows[i]; i++)
+            row.cells[0].innerHTML = i;
+    }
+
+    function delSegment() {
+        let x = this.parentElement.parentElement;
+        x.parentElement.deleteRow(x.rowIndex);
+        fixRowOrdinals();
+        stateChange();
+    }
+    function seekBackward() {
+        var t = player.getCurrentTime() - (1 / vidFps);
+        player.seekTo(t, true);
+    }
+    function seekForward() {
+        var t = player.getCurrentTime() + (1 / vidFps);
+        player.seekTo(t, true);
+    }
+    function togglePlay() {
+        if (player.getPlayerState() == 1) {
+            player.pauseVideo();
+        } else {
+            player.playVideo();
+        }
+    }
+    function moveRowUp(a) {
+        let b = a.previousElementSibling;
+        let c = a.parentNode;
+        if (a != c.rows[1]) {
+            c.insertBefore(a,b);
+            fixRowOrdinals();
+            stateChange();
+        }
+    }
+    function moveRowDown(a) {
+        let b = a.nextElementSibling;
+        let c = a.parentNode;
+        let n = c.rows.length;
+        if (a != c.rows[n-1]) {
+            c.insertBefore(b,a);
+            fixRowOrdinals();
+            stateChange();
+        }
+    }
+</script>
+</head>
+<body>
+    <input type="text" id="video-url" oninput="loadVideo()" placeholder="YouTube URL"><input type="text" id="video-fps" placeholder="FPS"><br>
+    <div><div id="player"></div></div>
+    <button class="segment-btn" onclick="addSegment(0,0,0)">+ Add Segment</button>
+    <button class="control-btn" onclick="seekBackward()">&lt;</button>
+    <button class="control-btn" onclick="togglePlay()">||</button>
+    <button class="control-btn" onclick="seekForward()">&gt;</button>
+    <div id="segment-container">
+        <table id="segment-table">
+            <tr>
+                <th>#</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Segment</th>
+                <th>Cumulative</th>
+                <th>Subtract</th>
+                <th>Controls</th>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>
